@@ -1,0 +1,36 @@
+[
+  {
+    "id": "BFZ-CC3AFBADFCD2",
+    "createdAt": "2026-10-08T02:08:00.245Z",
+    "customer": {
+      "name": "eben",
+      "phone": "0921467506",
+      "time": "13:30",
+      "payment": "Telebirr",
+      "notes": ""
+    },
+    "items": [
+      {
+        "id": "m6",
+        "name": "Shiro",
+        "amharic": "ሽሮ",
+        "qty": 1,
+        "price": 170
+      }
+    ],
+    "total": 170,
+    "deposit": 85,
+    "balance": 85,
+    "receipt": {
+      "filename": "ceaa5817-165c-417c-96fe-030fca21a59a.jpg",
+      "mimeType": "image/jpeg",
+      "size": 46380
+    },
+    "paymentStatus": "pending_verification",
+    "telegramStatus": "delivered",
+    "telegramMessageIds": {
+      "photo": 4,
+      "text": 5
+    }
+  }
+]
