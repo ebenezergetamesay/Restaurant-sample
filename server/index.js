@@ -316,7 +316,7 @@ function createApp({ dataDir = process.env.ORDER_DATA_DIR || path.join(SERVER_DI
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT || 3001);
-  createApp().listen(port, '127.0.0.1', () => console.log(`Barch ordering API listening on http://127.0.0.1:${port}`));
+  createApp().listen(port, '0.0.0.0', () => console.log(`Barch ordering API listening on http://0.0.0.0:${port}`));
 }
 
 export { createApp };
