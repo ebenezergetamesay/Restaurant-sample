@@ -1,24 +1,16 @@
 /**
- * API URL configuration for production and development environments.
- * 
- * Production: Set VITE_API_BASE_URL to the public backend URL (e.g., "https://api.example.com")
- * Development: Leave VITE_API_BASE_URL empty to use Vite's local proxy (/api/...)
- * 
- * No private secrets (Telegram tokens, admin keys) should be in frontend code.
+ * API helper for local and production deployments.
+ * Local dev: leave VITE_API_BASE_URL unset and use /api/... via Vite proxy.
+ * Production: set VITE_API_BASE_URL to the public backend base URL.
  */
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-
-/**
- * Construct a full API endpoint URL.
- * - If VITE_API_BASE_URL is set, uses that as the base.
- * - Otherwise, uses relative paths for Vite's local proxy.
- */
-export function getApiUrl(endpoint) {
-  if (apiBaseUrl) {
-    // Production: use configured base URL
-    return `${apiBaseUrl}${endpoint}`;
+export function apiUrl(path) {
+  const baseUrl = import.meta.env.VITE_API_BASE_URL;
+  if (!baseUrl) {
+    return path;
   }
-  // Development: use relative path for Vite proxy
-  return endpoint;
+  return `${baseUrl.replace(/\/$/, '')}${path}`;
+}
+
+export async function apiRequest(path, options = {}) {
+  return fetch(apiUrl(path), options);
 }
