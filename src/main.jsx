@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BUSINESS } from './config';
 import { categories, menu } from './menu';
+import { apiRequest } from './api';
 import './styles.css';
 
 const money = n => `${Number(n).toLocaleString()} ETB`;
@@ -69,10 +70,10 @@ function App(){
     data.append('receipt',receipt,receipt.name);
     let response;
     try {
-      response=await fetch('/api/orders',{method:'POST',body:data});
+      response=await apiRequest('/api/orders',{method:'POST',body:data});
     } catch(error) {
       console.error('Order API request could not connect:',error);
-      throw new Error('Could not connect to the order API at /api/orders. Make sure the backend is running on port 3001 and Vite is running with its API proxy.');
+      throw new Error('Could not connect to the order API. Make sure the backend is running and accessible.');
     }
     const responseText=await response.text();
     const contentType=response.headers.get('content-type')||'unknown';
@@ -83,7 +84,7 @@ function App(){
       const bodyPreview=responseText.trim().slice(0,500);
       result={error:bodyPreview||(
         response.status===502
-          ? 'The Vite API proxy returned an empty response. Confirm the backend is running with npm run dev:server on port 3001.'
+          ? 'The API returned an empty response. Confirm the backend is running and configured correctly.'
           : `Server returned an empty ${response.status} response (${contentType}).`
       )};
     }
@@ -102,30 +103,30 @@ function App(){
 
     <main>
       <section className="hero">
-        <div className="heroCopy"><div className="eyebrow">BARCH FOOD ZONE</div><h1>Order your favorites.<br/><em>Pay 50% now.</em></h1><p>Choose whatever you want from the menu, place your order, pay the 50% deposit, and send your receipt on Telegram. Pay the remaining 50% at the restaurant.</p><div className="heroActions"><a className="primary" href="#how">How to order</a></div><div className="trust"><span>✓ Order by Telegram</span><span>✓ 50% deposit</span><span>✓ Receipt verification</span></div></div>
-        <div className="heroCard"><div className="receiptTop"><span>ORDER PREVIEW</span><span>BFZ-DEMO</span></div><div className="previewLine"><span>2 × Firfir</span><b>480 ETB</b></div><div className="previewLine"><span>1 × Pasta</span><b>170 ETB</b></div><div className="previewLine"><span>2 × Drink</span><b>300 ETB</b></div><div className="divider"/><div className="previewLine totalLine"><span>Total</span><b>950 ETB</b></div><div className="deposit"><span>50% deposit</span><strong>475 ETB</strong></div><div className="balance">475 ETB remaining at restaurant</div></div>
+        <div className="heroCopy"><div className="eyebrow">BARCH FOOD ZONE</div><h1>Order your favorites.<br/><em>Pay 50% now.</em></h1><p>Choose whatever you want from the menu, place your order[...]
+        <div className="heroCard"><div className="receiptTop"><span>ORDER PREVIEW</span><span>BFZ-DEMO</span></div><div className="previewLine"><span>2 × Firfir</span><b>480 ETB</b></div><div cl[...]
       </section>
 
-      <section id="how" className="steps"><h2>HOW IT WORKS</h2><div className="sameDayNotice">Orders are for the same day unless Barch Food Zone makes another arrangement with you.</div><div className="stepGrid"><Step n="1" title="Choose your food" text="Select anything you want from the menu and add it to your cart."/><Step n="2" title="Review your order" text="Check your items, quantities, and total price."/><Step n="3" title="Pay 50%" text="After placing your order, you will be asked to pay 50% of the total."/><Step n="4" title="Send your receipt" text="Send the payment receipt through Telegram."/><Step n="5" title="Wait for confirmation" text="Barch Food Zone will verify your payment and confirm your order through Telegram. Payment confirmation is done by the restaurant, not automatically by this website."/><Step n="6" title="Pay the remaining 50%" text="Pay the remaining balance when you arrive at Barch Food Zone."/></div></section>
+      <section id="how" className="steps"><h2>HOW IT WORKS</h2><div className="sameDayNotice">Orders are for the same day unless Barch Food Zone makes another arrangement with you.</div><div clas[...]
 
       <section id="menu" className="menuSection"><div className="sectionHead"><div><div className="eyebrow">TODAY'S MENU</div><h2>Choose whatever you want</h2></div></div>
         <div className="chips">{categories.map(c=><button className={category===c?'active':''} onClick={()=>setCategory(c)} key={c}>{c}</button>)}</div>
-        <div className="menuGrid">{visible.map(x=><article className="foodCard" key={x.id}><div className="foodImage"><div className="foodInitial">{x.name[0]}</div>{x.badge&&<span className="badge">{x.badge}</span>}</div><div className="foodBody"><div className="foodTitle"><div className="foodNames"><div className="amharic amharicTop">{x.amharic}</div><h3>{x.name}</h3></div><strong>{money(x.price)}</strong></div><p>{x.description}</p><button onClick={()=>add(x.id)} className="add">Add to order <span>+</span></button></div></article>)}</div>
-        <div className="menuNotice">Menu names and prices in this demo are a starter transcription from the supplied photos. Verify them with Barch before publishing. The original menu photos are included in the project under <code>public/menu/</code>.</div>
+        <div className="menuGrid">{visible.map(x=><article className="foodCard" key={x.id}><div className="foodImage"><div className="foodInitial">{x.name[0]}</div>{x.badge&&<span className="badg[...]
+        <div className="menuNotice">Menu names and prices in this demo are a starter transcription from the supplied photos. Verify them with Barch before publishing. The original menu photos are[...]
       </section>
 
     </main>
 
     <footer><div><strong>BARCH FOOD ZONE</strong><span>Online ordering demo</span></div><div>© 2026 Barch Food Zone</div></footer>
 
-    {showCart&&<Modal title="Your order" close={()=>setShowCart(false)}><Cart items={items} change={change} total={total} deposit={deposit} onCheckout={()=>{if(items.length){setShowCheckout(true)}}} clear={clear}/></Modal>}
+    {showCart&&<Modal title="Your order" close={()=>setShowCart(false)}><Cart items={items} change={change} total={total} deposit={deposit} onCheckout={()=>{if(items.length){setShowCheckout(true)[...]}}
     {showCheckout&&<Modal title="Checkout & 50% deposit" close={()=>setShowCheckout(false)}><Checkout total={total} deposit={deposit} items={items} onSubmit={createOrder}/></Modal>}
     {selectedOrder&&<Modal title={`Order ${selectedOrder.id}`} close={()=>setSelectedOrder(null)}><OrderResult order={selectedOrder}/></Modal>}
   </div>
 }
 function Step({n,title,text}){return <div className="step"><span>{n}</span><h3>{title}</h3><p>{text}</p></div>}
-function Modal({title,close,children}){return <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&close()}><div className="modal"><div className="modalHead"><h2>{title}</h2><button onClick={close}>×</button></div>{children}</div></div>}
-function Cart({items,change,total,deposit,onCheckout,clear}){return <div>{!items.length?<div className="empty"><div>🛒</div><h3>Your cart is empty</h3><p>Add items from the menu to start an order.</p></div>:<><div className="cartItems">{items.map(x=><div className="cartRow" key={x.item.id}><div><strong>{x.item.name}</strong><small>{x.item.amharic}</small></div><div className="qty"><button onClick={()=>change(x.item.id,-1)}>−</button><b>{x.qty}</b><button onClick={()=>change(x.item.id,1)}>+</button></div><strong>{money(x.item.price*x.qty)}</strong></div>)}</div><div className="summary"><div><span>Total</span><b>{money(total)}</b></div><div><span>50% deposit</span><b>{money(deposit)}</b></div><div><span>Pay at restaurant</span><b>{money(total-deposit)}</b></div></div><div className="modalActions"><button className="secondary" onClick={clear}>Clear</button><button className="primary" onClick={onCheckout}>Continue</button></div></>}</div>}
+function Modal({title,close,children}){return <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&close()}><div className="modal"><div className="modalHead"><h2>{title}</h2><butt[...]
+function Cart({items,change,total,deposit,onCheckout,clear}){return <div>{!items.length?<div className="empty"><div>🛒</div><h3>Your cart is empty</h3><p>Add items from the menu to start an ord[...]
 function Checkout({total,deposit,items,onSubmit}){
   const options=useMemo(()=>ethiopianTimeOptions(),[]);
   const [orderId]=useState(()=>`BFZ-${crypto.randomUUID().replaceAll('-','').slice(0,12).toUpperCase()}`);
@@ -146,23 +147,23 @@ function Checkout({total,deposit,items,onSubmit}){
     onSubmit(form,receipt,orderId).catch(error=>setErr(error.message)).finally(()=>setSubmitting(false));
   }}>
     <div className="todayNotice">📍 <b>Pickup is today.</b> Orders are for the same day unless Barch specifically agrees otherwise.</div>
-    <div className="depositBox"><div><span>Order total</span><b>{money(total)}</b></div><div><span>Pay now (50%)</span><strong>{money(deposit)}</strong></div><div><span>Pay at restaurant</span><b>{money(total-deposit)}</b></div></div>
+    <div className="depositBox"><div><span>Order total</span><b>{money(total)}</b></div><div><span>Pay now (50%)</span><strong>{money(deposit)}</strong></div><div><span>Pay at restaurant</span><b[...]
     <div className="formGrid">
       <label>Name<input value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Customer name"/></label>
       <label>Phone<input value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="09..."/></label>
-      <label className="full">Pickup time — Ethiopian time<select value={form.time} onChange={e=>set('time',e.target.value)}>{options.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label>
-      <label className="full">Payment method<select value={form.payment} onChange={e=>set('payment',e.target.value)}>{BUSINESS.paymentMethods.map(x=><option key={x.name}>{x.name}</option>)}</select></label>
+      <label className="full">Pickup time — Ethiopian time<select value={form.time} onChange={e=>set('time',e.target.value)}>{options.map(x=><option key={x.value} value={x.value}>{x.label}</opt[...]
+      <label className="full">Payment method<select value={form.payment} onChange={e=>set('payment',e.target.value)}>{BUSINESS.paymentMethods.map(x=><option key={x.name}>{x.name}</option>)}</sele[...]
       <label className="full">Notes<textarea value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Allergies, preferences, pickup notes..."/></label>
     </div>
-    <div className="payInstruction"><strong>Submit your receipt:</strong> Pay {money(deposit)} using the selected method, then upload the receipt image. The website sends the actual image and order details to Barch via Telegram. The restaurant will manually verify payment. The remaining {money(total-deposit)} is paid at the restaurant.</div>
-    <label className="upload">🧾 Payment receipt<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0]||null;setReceipt(f);setReceiptCheck(f?validateReceipt(f):null);setErr('')}}/><small>{receipt?receipt.name:'Choose JPG, PNG, or WEBP receipt image (max 10 MB)'}</small>{receiptCheck&&<span className={receiptCheck.ok?'receiptOk':'receiptWarn'}>{receiptCheck.ok?'✓ '+receiptCheck.reason:'⚠ '+receiptCheck.reason}</span>}</label>
+    <div className="payInstruction"><strong>Submit your receipt:</strong> Pay {money(deposit)} using the selected method, then upload the receipt image. The website sends the actual image and ord[...]
+    <label className="upload">🧾 Payment receipt<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0]||null;setReceipt(f);s[...]
     {err&&<div className="error">{err}</div>}
     <button className="primary fullBtn" type="submit" disabled={submitting}>{submitting?'Submitting order and receipt…':'Submit order & receipt'}</button>
     <p className="tiny">Submitting a receipt does not confirm payment. Barch Food Zone will manually verify the image before confirming or rejecting the payment.</p>
   </form>
 }
 function OrderResult({order}){
-  return <div><div className="statusBanner"><span className="statusDot"/> Receipt submitted — waiting for restaurant verification.</div><div className="orderDetails"><p><b>Order:</b> {order.id}</p><p><b>Customer:</b> {order.customer.name} · {order.customer.phone}</p><p><b>Pickup:</b> Today · {ethiopianTimeLabel(order.customer.time)} Ethiopian time</p><p><b>Total:</b> {money(order.total)} · <b>Deposit:</b> {money(order.deposit)} · <b>Balance:</b> {money(order.balance)}</p><p><b>Receipt:</b> Sent as an image to the restaurant.</p><p><b>Payment:</b> Not confirmed. The restaurant must review the receipt.</p></div>
+  return <div><div className="statusBanner"><span className="statusDot"/> Receipt submitted — waiting for restaurant verification.</div><div className="orderDetails"><p><b>Order:</b> {order.id}[...]
   </div>
 }
 
