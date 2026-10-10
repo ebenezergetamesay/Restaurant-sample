@@ -1,0 +1,31 @@
+# Netlify configuration for Barch Food Zone
+# Frontend: deployed on Netlify
+# Backend: deployed separately (configured via VITE_API_BASE_URL)
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Environment variables required for production deployment
+# Add these in Netlify UI under Site settings > Build & deploy > Environment:
+#
+#   VITE_API_BASE_URL = "https://api-backend-url.example.com"
+#
+# This tells the frontend where to send API requests (e.g., POST /api/orders).
+# In local development, VITE_API_BASE_URL is unset and the Vite proxy is used.
+
+# CORS: If the backend is on a different domain, ensure it has CORS headers:
+#   Access-Control-Allow-Origin: https://restaurant-sampl.netlify.app
+#   Access-Control-Allow-Methods: GET, POST, PATCH, OPTIONS
+#   Access-Control-Allow-Headers: Content-Type, x-admin-api-key
+#   Access-Control-Allow-Credentials: false
+
+# Example: If deploying backend to Render, Railway, or Heroku:
+#   1. Deploy server/index.js with PORT and TELEGRAM_BOT_TOKEN env vars set
+#   2. Copy the deployed backend URL
+#   3. Set VITE_API_BASE_URL = "https://your-backend.example.com" in Netlify
+#   4. Redeploy the frontend
+
+# For testing locally:
+#   npm run dev:server  (in one terminal, runs on port 3001)
+#   npm run dev         (in another terminal, Vite proxies /api to :3001)
