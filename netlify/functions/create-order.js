@@ -7,7 +7,7 @@ const imageTypes = {
   'image/webp': { extension: '.webp', matches: buffer => buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP' }
 };
 
-const MAX_RECEIPT_SIZE = 5 * 1024 * 1024; // 5 MB for Netlify Functions
+const MAX_RECEIPT_SIZE = 3 * 1024 * 1024; // 3 MB for Netlify Functions (6 MB limit with Base64 overhead)
 
 function money(amount) {
   return `${Number(amount).toLocaleString('en-US')} ETB`;
@@ -122,6 +122,51 @@ async function sendOrderToTelegram(order, receiptBuffer, receiptMimeType, token,
   };
 }
 
+/**
+ * Parses multipart form data from event.body.
+ * Handles both raw buffer and Base64-encoded payloads.
+ */
+function parseMultipartFormData(body, boundary) {
+  const fields = {};
+  const parts = body.split(`--${boundary}`);
+
+  for (const part of parts) {
+    if (!part || part === '--\r\n' || part === '--') continue;
+
+    // Find end of headers
+    const headerEnd = part.indexOf('\r\n\r\n');
+    if (headerEnd === -1) continue;
+
+    const headers = part.substring(0, headerEnd).toLowerCase();
+    const bodyStart = headerEnd + 4;
+    const bodyEnd = part.lastIndexOf('\r\n');
+    const bodyContent = part.substring(bodyStart, bodyEnd);
+
+    // Extract field name
+    const nameMatch = headers.match(/name="([^"]+)"/);
+    if (!nameMatch) continue;
+    const fieldName = nameMatch[1];
+
+    // Extract filename and content-type for file uploads
+    const filenameMatch = headers.match(/filename="([^"]+)"/);
+    const contentTypeMatch = headers.match(/content-type:\s*([^\r\n]+)/);
+
+    if (filenameMatch) {
+      // File upload
+      fields[fieldName] = {
+        filename: filenameMatch[1],
+        mimetype: contentTypeMatch ? contentTypeMatch[1].trim() : 'application/octet-stream',
+        buffer: Buffer.from(bodyContent, 'binary')
+      };
+    } else {
+      // Regular form field
+      fields[fieldName] = bodyContent;
+    }
+  }
+
+  return fields;
+}
+
 export default async function handler(event, context) {
   // Only allow POST
   if (event.httpMethod !== 'POST') {
@@ -143,56 +188,44 @@ export default async function handler(event, context) {
   }
 
   try {
-    // Parse multipart form data
-    const formData = await event.body;
-    if (!formData || typeof formData !== 'string') {
+    // Get Content-Type header and extract boundary
+    const contentType = event.headers['content-type'] || '';
+    const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+    if (!boundaryMatch) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Request body is required.' })
+        body: JSON.stringify({ error: 'Invalid content type. FormData with boundary is required.' })
       };
     }
+    const boundary = boundaryMatch[1].replace(/"/g, '');
 
-    // Simple multipart parser for FormData
-    const boundary = event.headers['content-type']?.split('boundary=')[1];
-    if (!boundary) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Invalid content type. FormData is required.' })
-      };
-    }
-
-    // Parse form fields and file
-    let orderJsonStr = '';
-    let receiptBuffer = null;
-    let receiptMimeType = '';
-    const parts = formData.split(`--${boundary}`);
-
-    for (const part of parts) {
-      if (part.includes('name="order"')) {
-        const match = part.match(/\r?\n\r?\n([\s\S]*?)\r?\n/);
-        if (match) orderJsonStr = match[1];
-      } else if (part.includes('name="receipt"')) {
-        const headerEnd = part.indexOf('\r\n\r\n');
-        if (headerEnd !== -1) {
-          const headers = part.substring(0, headerEnd);
-          const contentTypeMatch = headers.match(/Content-Type:\s*([^\r\n]+)/i);
-          if (contentTypeMatch) receiptMimeType = contentTypeMatch[1].trim();
-          
-          const bodyStart = headerEnd + 4;
-          const bodyEnd = part.lastIndexOf('\r\n');
-          const bodyText = part.substring(bodyStart, bodyEnd);
-          receiptBuffer = Buffer.from(bodyText, 'binary');
-        }
+    // Decode body if Base64-encoded
+    let bodyBuffer = event.body;
+    if (typeof bodyBuffer === 'string') {
+      if (event.isBase64Encoded) {
+        bodyBuffer = Buffer.from(bodyBuffer, 'base64');
+      } else {
+        bodyBuffer = Buffer.from(bodyBuffer);
       }
     }
 
+    // Convert buffer to string for multipart parsing
+    const bodyString = bodyBuffer.toString('binary');
+
+    // Parse multipart form data
+    const fields = parseMultipartFormData(bodyString, boundary);
+
     // Validate receipt
-    if (!receiptBuffer) {
+    const receiptField = fields.receipt;
+    if (!receiptField || !receiptField.buffer) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Upload a receipt image.' })
       };
     }
+
+    const receiptBuffer = receiptField.buffer;
+    const receiptMimeType = receiptField.mimetype;
 
     if (receiptBuffer.length > MAX_RECEIPT_SIZE) {
       return {
@@ -201,6 +234,7 @@ export default async function handler(event, context) {
       };
     }
 
+    // Validate image type by magic bytes
     const imageType = imageTypes[receiptMimeType];
     if (!imageType || !imageType.matches(receiptBuffer)) {
       return {
@@ -210,6 +244,14 @@ export default async function handler(event, context) {
     }
 
     // Parse and validate order
+    const orderJsonStr = fields.order;
+    if (!orderJsonStr) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Order details are required.' })
+      };
+    }
+
     let submittedOrder;
     try {
       submittedOrder = JSON.parse(orderJsonStr);
