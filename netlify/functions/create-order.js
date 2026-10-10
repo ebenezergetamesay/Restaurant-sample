@@ -1,4 +1,3 @@
-import busboy from 'busboy';
 import { menu } from '../../src/menu.js';
 
 const MAX_RECEIPT_SIZE = 3 * 1024 * 1024; // 3 MB for Netlify: safe under 6 MB buffered payload limit
@@ -109,7 +108,7 @@ async function sendOrderToTelegram(order, receiptBuffer, receiptMimeType, token,
   photoForm.set('chat_id', chatId);
   photoForm.set('caption', `Payment receipt for #${order.id}\n${order.customer.name} · ${order.customer.phone}\nDeposit: ${money(order.deposit)} — pending restaurant verification`);
   const receiptBlob = new Blob([receiptBuffer], { type: receiptMimeType });
-  photoForm.set('photo', receiptBlob, `receipt-${order.id}.jpg`);
+  photoForm.set('photo', receiptBlob, `receipt-${order.id}${imageTypes[receiptMimeType].extension}`);
   const photo = await telegramRequest(token, 'sendPhoto', photoForm);
 
   const messageForm = new FormData();
@@ -126,177 +125,89 @@ async function sendOrderToTelegram(order, receiptBuffer, receiptMimeType, token,
   };
 }
 
-function readMultipartEvent(event) {
-  return new Promise((resolve, reject) => {
-    const contentType = event.headers['content-type'] || event.headers['Content-Type'];
-    if (!contentType) {
-      reject(new Error('Missing multipart Content-Type header.'));
-      return;
-    }
-
-    const bb = busboy({
-      headers: { 'content-type': contentType },
-      limits: {
-        files: 1,
-        fileSize: MAX_RECEIPT_SIZE,
-        fields: 10
-      }
-    });
-
-    const fields = {};
-    let file = null;
-    let fileBuffer = [];
-
-    bb.on('field', (name, value) => {
-      fields[name] = value;
-    });
-
-    bb.on('file', (fieldname, stream, info) => {
-      if (fieldname !== 'receipt') {
-        stream.resume();
-        return;
-      }
-
-      const chunks = [];
-      stream.on('data', chunk => chunks.push(chunk));
-      stream.on('limit', () => {
-        reject(new Error('Receipt image exceeds the 3 MB upload limit.'));
-      });
-      stream.on('error', reject);
-      stream.on('end', () => {
-        file = {
-          fieldname,
-          filename: info.filename,
-          mimetype: info.mimeType,
-          buffer: Buffer.concat(chunks)
-        };
-      });
-    });
-
-    bb.on('error', reject);
-    bb.on('finish', () => resolve({ fields, file }));
-
-    const rawBody = event.body ?? '';
-    const payload = event.isBase64Encoded
-      ? Buffer.from(rawBody, 'base64')
-      : Buffer.from(rawBody, 'utf8');
-
-    bb.end(payload);
+function json(status, body) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' }
   });
 }
 
-export default async function handler(event) {
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Method not allowed.' })
-    };
-  }
+export default async function handler(req) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
 
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const telegramChatId = process.env.TELEGRAM_CHAT_ID?.trim();
 
   if (!telegramToken || !telegramChatId) {
-    return {
-      statusCode: 503,
-      body: JSON.stringify({ error: 'Order submission is not configured. The restaurant must configure Telegram on the server.' })
-    };
+    return json(503, { error: 'Order submission is not configured. The restaurant must configure Telegram on the server.' });
   }
 
   try {
-    const { fields, file } = await readMultipartEvent(event);
-
-    if (!file || !file.buffer || file.buffer.length === 0) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Upload a receipt image.' })
-      };
+    let formData;
+    try {
+      formData = await req.formData();
+    } catch {
+      return json(400, { error: 'The order must be submitted as multipart form data.' });
     }
 
-    if (file.buffer.length > MAX_RECEIPT_SIZE) {
-      return {
-        statusCode: 413,
-        body: JSON.stringify({ error: `Receipt image must be ${MAX_RECEIPT_SIZE / (1024 * 1024)} MB or smaller.` })
-      };
+    const receipt = formData.get('receipt');
+    if (!receipt || typeof receipt === 'string' || receipt.size === 0) {
+      return json(400, { error: 'Upload a receipt image.' });
     }
 
-    const imageType = imageTypes[file.mimetype];
-    if (!imageType || !imageType.matches(file.buffer)) {
-      return {
-        statusCode: 415,
-        body: JSON.stringify({ error: 'Receipt must be a valid JPG, PNG, or WEBP image.' })
-      };
+    if (receipt.size > MAX_RECEIPT_SIZE) {
+      return json(413, { error: `Receipt image must be ${MAX_RECEIPT_SIZE / (1024 * 1024)} MB or smaller.` });
     }
 
-    const orderJsonStr = fields.order;
-    if (!orderJsonStr) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Order details are required.' })
-      };
+    const receiptBuffer = Buffer.from(await receipt.arrayBuffer());
+    const imageType = imageTypes[receipt.type];
+    if (!imageType || !imageType.matches(receiptBuffer)) {
+      return json(415, { error: 'Receipt must be a valid JPG, PNG, or WEBP image.' });
+    }
+
+    const orderJsonStr = formData.get('order');
+    if (typeof orderJsonStr !== 'string' || !orderJsonStr) {
+      return json(400, { error: 'Order details are required.' });
     }
 
     let submittedOrder;
     try {
       submittedOrder = JSON.parse(orderJsonStr);
     } catch {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Order details must be valid JSON.' })
-      };
+      return json(400, { error: 'Order details must be valid JSON.' });
     }
 
     let orderData;
     try {
       orderData = validateOrder(submittedOrder);
     } catch (error) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: error.message })
-      };
+      return json(400, { error: error.message });
     }
 
     const orderId = submittedOrder.orderId;
     if (typeof orderId !== 'string' || !/^BFZ-[A-F0-9]{12}$/.test(orderId)) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'A valid order ID is required.' })
-      };
+      return json(400, { error: 'A valid order ID is required.' });
     }
 
     const order = {
       id: orderId,
       createdAt: new Date().toISOString(),
       ...orderData,
-      receipt: { mimeType: file.mimetype, size: file.buffer.length },
+      receipt: { mimeType: receipt.type, size: receiptBuffer.length },
       paymentStatus: 'pending_verification'
     };
 
     let telegramResult;
     try {
-      telegramResult = await sendOrderToTelegram(order, file.buffer, file.mimetype, telegramToken, telegramChatId);
+      telegramResult = await sendOrderToTelegram(order, receiptBuffer, receipt.type, telegramToken, telegramChatId);
     } catch (error) {
       console.error(`Telegram delivery failed for ${orderId}:`, error.message);
-      return {
-        statusCode: 502,
-        body: JSON.stringify({ error: `Could not deliver order to Telegram. Order ID: ${orderId}. Please contact the restaurant.` })
-      };
+      return json(502, { error: `Could not deliver order to Telegram. Order ID: ${orderId}. Please contact the restaurant.` });
     }
 
-    return {
-      statusCode: 201,
-      body: JSON.stringify({
-        order: {
-          ...order,
-          ...telegramResult
-        }
-      })
-    };
+    return json(201, { order: { ...order, ...telegramResult } });
   } catch (error) {
     console.error('Order submission error:', error.message);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'The order could not be processed. Please contact the restaurant before retrying.' })
-    };
+    return json(500, { error: 'The order could not be processed. Please contact the restaurant before retrying.' });
   }
 }
