@@ -185,83 +185,63 @@ function readMultipartEvent(event) {
   });
 }
 
+function jsonResponse(statusCode, data) {
+  return new Response(JSON.stringify(data), {
+    status: statusCode,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
 export default async function handler(event) {
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Method not allowed.' })
-    };
+    return jsonResponse(405, { error: 'Method not allowed.' });
   }
 
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const telegramChatId = process.env.TELEGRAM_CHAT_ID?.trim();
 
   if (!telegramToken || !telegramChatId) {
-    return {
-      statusCode: 503,
-      body: JSON.stringify({ error: 'Order submission is not configured. The restaurant must configure Telegram on the server.' })
-    };
+    return jsonResponse(503, { error: 'Order submission is not configured. The restaurant must configure Telegram on the server.' });
   }
 
   try {
     const { fields, file } = await readMultipartEvent(event);
 
     if (!file || !file.buffer || file.buffer.length === 0) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Upload a receipt image.' })
-      };
+      return jsonResponse(400, { error: 'Upload a receipt image.' });
     }
 
     if (file.buffer.length > MAX_RECEIPT_SIZE) {
-      return {
-        statusCode: 413,
-        body: JSON.stringify({ error: `Receipt image must be ${MAX_RECEIPT_SIZE / (1024 * 1024)} MB or smaller.` })
-      };
+      return jsonResponse(413, { error: `Receipt image must be ${MAX_RECEIPT_SIZE / (1024 * 1024)} MB or smaller.` });
     }
 
     const imageType = imageTypes[file.mimetype];
     if (!imageType || !imageType.matches(file.buffer)) {
-      return {
-        statusCode: 415,
-        body: JSON.stringify({ error: 'Receipt must be a valid JPG, PNG, or WEBP image.' })
-      };
+      return jsonResponse(415, { error: 'Receipt must be a valid JPG, PNG, or WEBP image.' });
     }
 
     const orderJsonStr = fields.order;
     if (!orderJsonStr) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Order details are required.' })
-      };
+      return jsonResponse(400, { error: 'Order details are required.' });
     }
 
     let submittedOrder;
     try {
       submittedOrder = JSON.parse(orderJsonStr);
     } catch {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Order details must be valid JSON.' })
-      };
+      return jsonResponse(400, { error: 'Order details must be valid JSON.' });
     }
 
     let orderData;
     try {
       orderData = validateOrder(submittedOrder);
     } catch (error) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: error.message })
-      };
+      return jsonResponse(400, { error: error.message });
     }
 
     const orderId = submittedOrder.orderId;
     if (typeof orderId !== 'string' || !/^BFZ-[A-F0-9]{12}$/.test(orderId)) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'A valid order ID is required.' })
-      };
+      return jsonResponse(400, { error: 'A valid order ID is required.' });
     }
 
     const order = {
@@ -277,26 +257,17 @@ export default async function handler(event) {
       telegramResult = await sendOrderToTelegram(order, file.buffer, file.mimetype, telegramToken, telegramChatId);
     } catch (error) {
       console.error(`Telegram delivery failed for ${orderId}:`, error.message);
-      return {
-        statusCode: 502,
-        body: JSON.stringify({ error: `Could not deliver order to Telegram. Order ID: ${orderId}. Please contact the restaurant.` })
-      };
+      return jsonResponse(502, { error: `Could not deliver order to Telegram. Order ID: ${orderId}. Please contact the restaurant.` });
     }
 
-    return {
-      statusCode: 201,
-      body: JSON.stringify({
-        order: {
-          ...order,
-          ...telegramResult
-        }
-      })
-    };
+    return jsonResponse(201, {
+      order: {
+        ...order,
+        ...telegramResult
+      }
+    });
   } catch (error) {
     console.error('Order submission error:', error.message);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'The order could not be processed. Please contact the restaurant before retrying.' })
-    };
+    return jsonResponse(500, { error: 'The order could not be processed. Please contact the restaurant before retrying.' });
   }
 }
