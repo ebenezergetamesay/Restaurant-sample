@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BUSINESS } from './config';
 import { categories, menu } from './menu';
-import { apiRequest } from './api';
 import './styles.css';
 
 const money = n => `${Number(n).toLocaleString()} ETB`;
@@ -40,7 +39,7 @@ function validateReceipt(file){
   if(!file) return {ok:false,reason:'Please select the payment receipt image.'};
   if(!['image/jpeg','image/png','image/webp'].includes(file.type)) return {ok:false,reason:'Choose a JPG, PNG, or WEBP receipt image.'};
   if(file.size < 8*1024) return {ok:false,reason:'This image is unusually small to be a payment receipt. Please choose the actual receipt screenshot/photo.'};
-  if(file.size > 10*1024*1024) return {ok:false,reason:'Receipt image is larger than 10 MB.'};
+  if(file.size > 3*1024*1024) return {ok:false,reason:'Receipt image is larger than 3 MB.'};
   return {ok:true,reason:'Receipt selected. The restaurant must still verify the payment.'};
 }
 
@@ -70,10 +69,10 @@ function App(){
     data.append('receipt',receipt,receipt.name);
     let response;
     try {
-      response=await apiRequest('/api/orders',{method:'POST',body:data});
+      response=await fetch('/.netlify/functions/create-order',{method:'POST',body:data});
     } catch(error) {
-      console.error('Order API request could not connect:',error);
-      throw new Error('Could not connect to the order API. Make sure the backend is running and accessible.');
+      console.error('Order submission request failed:',error);
+      throw new Error('Could not connect to the order submission service. Please check your internet connection and try again.');
     }
     const responseText=await response.text();
     const contentType=response.headers.get('content-type')||'unknown';
@@ -84,13 +83,13 @@ function App(){
       const bodyPreview=responseText.trim().slice(0,500);
       result={error:bodyPreview||(
         response.status===502
-          ? 'The API returned an empty response. Confirm the backend is running and configured correctly.'
+          ? 'The order submission service returned an empty response. Please contact the restaurant.'
           : `Server returned an empty ${response.status} response (${contentType}).`
       )};
     }
     if(!response.ok) {
       const details=`HTTP ${response.status} ${response.statusText}: ${result.error||'No error details returned.'}`;
-      console.error('Order API rejected submission:',{url:response.url,status:response.status,statusText:response.statusText,contentType,details:result});
+      console.error('Order submission rejected:',{url:response.url,status:response.status,statusText:response.statusText,contentType,details:result});
       throw new Error(details);
     }
     clear(); setShowCheckout(false); setShowCart(false); setSelectedOrder(result.order);
